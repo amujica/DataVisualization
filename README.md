@@ -1,3 +1,3 @@
-# Simple R Markdown Notebook
+# Data Visualization and Machine Learning in R
 
-This is a very simple template for a data analysis notebook created using the excellent [R Markdown package](http://rmarkdown.rstudio.com/). See the [notebook created from this repository](https://lmullen.github.io/rmd-notebook/) to see what it does. It doesn't do much, because it's simple. Or see [one of my notebooks for a research project](http://lmullen.github.io/civil-procedure-codes/). 
+In this repository I gather all the R code I have made to learn Data Analysis and Machine Learning in R. All the R notebooks can be visualized in this website: [](https://https://amujica.github.io/DataVisualization-R/)
