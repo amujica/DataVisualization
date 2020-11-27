@@ -1,0 +1,219 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### Section 00 - Getting Ready
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(magrittr) # Needed for %>% operator
+library(tidyr)
+library(MAS6005) # Install with 
+library(ggrepel)
+```
+
+### Section 01 - Plot types
+
+Match each chart type with the relationship it shows best.
+  1. shows distribution and quantiles, especially useful when       comparing distributions. --> boxplot
+  2. highlights individual values, supports comparison and can      show rankings or deviations categories and  totals --> bar chart
+  3. shows overall changes and patterns, usually over intervals of   time --> line chart
+  4. shows relationship between two continues variables.--> scatterplot
+  Options: bar chart, line chart, scatterplot, boxplot
+
+Distributions --> violin, boxplot, or histogram. Boxplot is when 
+
+### Section 02 - Visualizing distributions
+
+1. Load the iris data and transform it to a data.table. Have a look at its first and last rows.
+```{r}
+iris_dt <- as.data.table(iris)
+head(iris_dt)
+```
+
+2. How are the lengths and widths of sepals and petals distributed? Make one plot of the distributions with multiple facets. Hint: You will need to reshape your data so that the different measurements (petal length, sepal length, etc.) are in one column and the values in another. Remember which is the best plot for visualizing distributions.
+```{r}
+#For facet_wrap we need to reshape the data
+iris_hist <- melt(iris_dt, id.vars = "Species", variable.name = "vars", value.name = "values")
+head(iris_hist)
+ggplot(iris_hist, aes(x=values)) + geom_histogram() + facet_wrap(~vars)
+ggplot(iris_hist, aes(x=values)) + geom_histogram() + facet_wrap(~vars+Species)
+#TO DO IR SEPARATELY
+#ggplot(iris_dt, aes(Sepal.Length)) + geom_histogram() 
+#ggplot(iris_dt, aes(Sepal.Width)) + geom_histogram() 
+#ggplot(iris_dt, aes(Petal.Length)) + geom_histogram() 
+#ggplot(iris_dt, aes(Petal.Width)) + geom_histogram() 
+```
+3. Vary the number of bins in the created histogram. Describe what you see.
+```{r}
+ggplot(iris_hist, aes(x=values)) + geom_histogram(bins=50) + facet_wrap(~vars)
+```
+4. Visualize the lengths and widths of the sepals and petals from the iris data with boxplots.
+```{r}
+ggplot(iris_hist, aes(x=vars, y=values)) +  geom_boxplot() 
+```
+5. Add individual data points as dots on the boxplots to visualize all points. Discuss: in this case, why is it
+not good to visualize the data with boxplots? Hint: geom_jitter() or geom_dotplot().
+```{r}
+ggplot(iris_hist, aes(x=vars, y=values)) +  geom_boxplot() +
+  geom_jitter()
+
+#With dotplot we can see also the distribution of we turn our head
+ggplot(iris_hist, aes(x=vars, y=values)) +  geom_boxplot() +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3, binwidth = 0.2)
+```
+6. Alternatives to boxplot are violin plots (geom_violin()). Try combining a boxplot with a violinplot to show the the lengths and widths of the sepals and petals from the iris data.
+```{r}
+ggplot(iris_hist, aes(x=vars, y=values)) +  geom_violin()+
+geom_boxplot(width=0.03) 
+
+```
+7. Which pattern shows up when moving from boxplot to violin/bean plot? Investigate the dataset to explain this kind of pattern, provide with visualization.
+
+Prons and cons of violin vs boxplot
+With boxplots you can see the stats (quantile,mean...) but are not very good when there are bimodal(or multimodal) distributions, because it is impossible to infer this #characteristic from it. Modality can be attributed to another variable (Species), like this:
+```{r}
+#Prons and cons of violin vs boxplot
+#With boxplots you can see the stats (quantile,mean...) but are #not very good when there are bimodal(or multimodal) #distributions, because it is impossible to infer this #characteristic from it. Modality can be attributed to another variable, like this: (Species)
+ggplot(iris_hist, aes(x=vars, y=values, color=Species)) +  
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0.5, binwidth = 0.2)
+
+
+
+```
+
+### Section 03 - Visualizing relationships
+
+1. Are there any relationships/correlations between petal length and width? How would you show it?
+```{r}
+ggplot(iris_dt, aes(x=Petal.Length, y=Petal.Width, color=Species)) + geom_point()
+
+```
+
+2. [OPTIONAL] Change your plot title and axis labels in the previous plot. For instance, the new title can be “Relationship between petal length and width”, and the axis labels “Petal Length” and “Petal Width”, respectively.
+```{r}
+ggplot(iris_dt, aes(x=Petal.Length, y=Petal.Width, color=Species)) + geom_point() + ggtitle("Relationship between petal length and width") + labs(y="Petal width (cm)", x = "Petal length (cm)")
+```
+
+3. Do petal lengths and widths correlate in every species? Show this with a plot.
+```{r}
+ggplot(iris_dt, aes(x=Petal.Length, y=Petal.Width, color=Species)) + geom_point() + facet_wrap(~Species)
+```
+
+### Section 04 - The importance of data visualization
+Anscombe’s quartet was constructed in 1973 by the statistician Francis Anscombe to demonstrate both the importance of graphing data before analyzing it, and the effect of outliers on statistical properties. anscombe is directly built in R. You don’t need to load it.
+1. We reshaped the original anscombe data to anscombe_reshaped. Which one is tidier?
+```{r}
+anscombe_reshaped <- anscombe %>% as.data.table %>% .[, ID := seq(nrow(.))] %>% melt(id.var=c("ID")) %>% separate(variable, c("xy", "group"), sep=1) %>% dcast(... ~ xy) %>% .[, group := paste0("dataset_", group)]
+head(anscombe)
+head(anscombe_reshaped)
+```
+
+2. Compute the mean and standard deviation of each variable for each group. What do you see?
+```{r}
+anscombe_reshaped[, .(x_mean= mean(x), y_mean = mean(y), x_sd =sd(x), y_sd =sd(x) ), by = group]
+#ggplot(anscombe_reshaped, aes(x=vars, y=values)) +  geom_boxplot() +geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3, binwidth = 0.2)
+```
+
+3. For each dataset, what is the Pearson correlation between x and y? Hint: cor() and Wikipedia1 for Pearson correlation.
+```{r}
+#. is a shortcut for list in DT environment
+anscombe_reshaped[, .(pearson = cor(x,y) ), by = group]
+```
+4. Only by computing statistics, we could conclude that all 4 datasets have the same data. Now, plot x and y for each dataset and discuss.
+```{r}
+ggplot(anscombe_reshaped, aes(x, y)) +geom_point()+ facet_wrap(~group)
+
+#ggplot(iris_hist, aes(x=vars, y=values)) +  geom_boxplot() +
+ # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3, binwidth = 0.2)
+```
+5. [OPTIONAL] Consider now the datasets given in the file boxplots.csv. Load the data and visualize the different datasets with a boxplot. What do you see? What can you conclude?
+```{r}
+#Datasets are from same stats different graphs autodesk
+# https://www.autodesk.com/research/publications/same-stats-different-graphs
+boxplots_dt <- fread("extdata/boxplots.csv")
+melt(boxplots_dt) %>% ggplot(aes(variable, value)) + geom_boxplot()
+
+
+
+
+```
+6. [OPTIONAL] Exchange the boxplots by violin plots in the previous exercise. Did something change? What do you conclude?
+```{r}
+melt(boxplots_dt) %>% ggplot(aes(variable, value)) + geom_violin()
+```
+
+### Section 05 - Axes scaling and text labeling
+
+1. Consider the medals dataset from the MAS6005 library. Compare total number of medals won against population size in the 2016 Rio olympics with a scatter plot. You can load the dataset with the following code:
+```{r}
+library(MAS6005)
+attach(medals)
+medals_dt <- as.data.table(medals)
+head(medals_dt)
+
+ggplot(medals_dt, aes(population, total)) +geom_point() 
+
+```
+2. What are the problems with the previous plot? Solve these issues with an adapted version of the plot.
+```{r}
+#Since there are some outliers we use lo
+ggplot(medals_dt, aes(population,total, label=country)) +geom_point() + scale_x_log10() + scale_y_log10()
+```
+
+3. Add the country labels to the points in the scatter plot. Compare the differences of using the library ggplot2 and the library ggrepel for this task
+```{r}
+ggplot(medals_dt, aes(population,total, label=code)) +geom_point() + scale_x_log10() + scale_y_log10()+geom_text_repel(size=3)
+```
+
+```{r}
+#Plotting only the ones with a population higher than 50
+ggplot(medals_dt[total>50, code_label:=code], aes(population,total, label=code_label)) +geom_point() + scale_x_log10() + scale_y_log10()+geom_text_repel(size=3)
+```
+
+
+Section 06 - Understanding and reacreating boxplots
+1. [OPTIONAL] Using the mtcars dataset, make a boxplot of the miles per gallon (mpg) per cylinder (cyl).
+```{r}
+mtcars <- data.table(mtcars)
+ggplot(mtcars, aes(factor(cyl),mpg)) + geom_boxplot()
+```
+
+2. [OPTIONAL] Now, recreate the same plot without using geom_boxplot. You have to add all the layers manually: IQR box, median line, whiskers and outlier points. Hint: Remember how a boxplot is constructed2.
+You may find these functions useful: IQR, geom_crossbar, geom_segment, geom_point. Use data.table commands.
+```{r}
+# median
+mtcars[, medians := median(mpg), by=cyl]
+
+# quantiles
+mtcars[, c("lq", "uq") := .(quantile(mpg, 0.25), quantile(mpg, 0.75)), by = cyl]
+
+# box
+# IQR 
+# 1.5 x IRQ
+mtcars[, IQR := 1.5*IQR(mpg), by=cyl]
+mtcars[, c("up_IQR", "down_IQR") := .(IQR + uq, lq - IQR)]
+
+## lines
+mtcars[mpg < up_IQR, up_whisker:= max(mpg), by =cyl]
+mtcars[mpg > down_IQR, down_whisker:= min(mpg), by = "cyl"]
+
+# outliers
+mtcars[, outlier := (mpg < down_IQR| mpg > up_IQR), by = cyl]
+
+
+## Make the plot
+ggplot(mtcars, aes(cyl, medians, ymax = uq, ymin = lq)) +
+  geom_crossbar(fill = "white", width = 1.3) + 
+  geom_segment(aes(cyl, down_whisker, xend = cyl, yend = lq)) + 
+  geom_segment(aes(cyl, uq, xend = cyl, yend = up_whisker)) +
+  geom_point(data = mtcars[outlier == TRUE], aes(cyl, mpg)) +
+  labs(y = "mpg")
+
+
+
+```
+
+

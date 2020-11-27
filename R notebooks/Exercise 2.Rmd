@@ -1,0 +1,248 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Since we are using data.tables the $ sign should not be used! We should use the DT env [] as much as you can.
+
+### Section 00 - Getting ready
+
+```{r}
+library(data.table)
+library(magrittr)
+```
+
+
+### Section 01 - Reading and cleaning up data
+
+1. Load the three given datasets as data.tables and name them as users_dt, books_dt and ratings_dt accordingly. Hint: fread()
+```{r}
+users_dt<- fread("./BX-Users.csv")
+ratings_dt<-fread("./BX-Book-Ratings.csv")
+books_dt <- fread("./BX-Books.csv")
+```
+
+2. Check the classes of users_dt, ratings_dt and books_dt. Confirm that these are indeed a data.table.
+```{r}
+class(users_dt)
+class(ratings_dt)
+class(books_dt)
+```
+
+
+3. Check the column names and classes of the users_dt data table and change the type of the Age column in users_dt to numeric.
+```{r}
+colnames(users_dt)
+sapply(users_dt, class)
+users_dt[,Age:= as.numeric(Age)]
+sapply(users_dt, class)
+```
+
+4. Produce a summary of the variables in books_dt.
+```{r}
+summary(books_dt)
+
+```
+
+5. Return the first 5 and last 5 observations of the table ratings_dt.
+```{r}
+head(ratings_dt)
+tail(ratings_dt)
+
+```
+
+6. Replace all the - in column names by underscores _ in all three data tables. For example, Book-Title should be renamed to Book_Title. Hint: You can use the function gsub() that replaces pattern in a character string by a defined replacement. For example, for replacing R by DataViz in the following sentence
+s we use:
+```{r}
+s <- 'R is fun'
+gsub('R', 'DataViz', s)
+
+```
+
+```{r}
+colnames(books_dt)
+colnames(books_dt) <- gsub('-', '_', colnames(books_dt))
+colnames(books_dt)
+
+colnames(ratings_dt) <- gsub('-', '_', colnames(ratings_dt))
+colnames(users_dt) <- gsub('-', '_', colnames(users_dt))
+```
+
+7. Delete the columns Image-URL-S, Image-URL-M and Image-URL-L in the table books_dt.
+```{r}
+books_dt[, c("Image_URL_S", "Image_URL_M", "Image_URL_L"):= NULL]
+
+```
+
+8. What is the first year of publication? What is the last one?
+```{r}
+books_dt[,min(Year_Of_Publication)]
+books_dt[,max(Year_Of_Publication)]
+
+```
+
+9. Remove all the books published before 1900 and later than 2019 from books_dt.
+```{r}
+dim(books_dt)
+books_dt <- books_dt[Year_Of_Publication >= 1900 & Year_Of_Publication <=2019]
+dim(books_dt)
+```
+
+### Section 02 - Data Exploration
+
+1. How many different authors are included in the table books_dt?
+```{r}
+books_dt[, unique(Book_Author)] %>% length()
+
+#Other option: books_dt[, uniqueN(Book_Author)]
+```
+
+2. How many different authors are included for each year of publication between 2000 and 2010 in books_dt?
+```{r}
+books_dt[Year_Of_Publication>=2000 & Year_Of_Publication<=2010,uniqueN(Book_Author),by=Year_Of_Publication][order(-Year_Of_Publication)]
+#uNIQUEn
+```
+
+
+3. In how many observations is the age information missing in the users table users_dt?.
+```{r}
+#users_dt[,is.na(Age)] %>% length()
+
+users_dt[is.na(Age), .N]
+```
+
+4. Have a look at all locations from teenager users the table users_dt.
+```{r}
+users_dt[Age>=13 & Age<=19, unique(Location)] %>% head(n=10)
+#Use head because it is long
+
+```
+
+5. What is the maximum rating value in the ratings table?.
+```{r}
+ratings_dt[,max(Book_Rating)]
+ratings_dt[,min(Book_Rating)]
+```
+
+6. What is the most common rating value larger than 0?
+```{r}
+ratings_dt[Book_Rating>0,.N,by=Book_Rating][N==max(N)]
+
+#.N always goes in second position
+```
+
+```{r}
+
+```
+
+7. Which are the book identifiers (ISBN) with the highest ratings?
+```{r}
+ratings_dt[Book_Rating == max(Book_Rating), ISBN] %>% head()
+#We use head because it is too long again
+```
+
+8. Sort the ratings table according to the rating value of each book in descending order. Hint: order()
+```{r}
+ratings_dt <- ratings_dt[order(-Book_Rating)]
+head(ratings_dt)
+```
+
+9. Create a new column Country in the table users_dt for the name of the country of each user. For
+instance, from the location cologne, nrw, germany, we can assume the user comes from Germany. Hint:
+tstrsplit()
+```{r}
+users_dt[, Country:= tstrsplit(Location, ",")[[3]]]
+?tstrsplit
+```
+
+10. How many different countries are contained in the table users_dt?
+```{r}
+users_dt[,uniqueN(Country)]
+#The number is too big, it is not our fault but the data table fault. We would have to clean it
+
+```
+
+11. What is the average age of the users in users_dt? What is the average age for users in NYC, Stockton
+and Moscow? Hint: use by:= and i for row filtering
+```{r}
+
+users_dt[, City:= tstrsplit(Location, ",")[[1]]]
+#users_dt[, City:= tstrsplit(Location, ",", keep=1)]
+
+users_dt[City %in% c("nyc","stockon", "moscow"), mean(Age, na.rm = TRUE), by=City]
+```
+
+### Section 03 - Manipulating data tables
+
+1. Add a new column called High_Rating to the data table ratings_dt. The column has an integer 1 for all observations with a rating value higher than 7
+```{r}
+
+ratings_dt[Book_Rating>7, High_Rating := 1]
+ratings_dt[Book_Rating<=7, High_Rating := 0]
+ratings_dt %>% head()
+
+#Other way
+#ratings_dt[,High_Rating := ifelse (Book_Rating>7, 1, 0)]
+
+```
+
+2. How many observations are considered to be a high ranking? What is the proportion of high ranked observations among all observations?
+```{r}
+ratings_dt[,.N,by=High_Rating]
+ratings_dt[High_Rating==1,.N]/ratings_dt[,.N]
+#Other way
+#ratings_dt[,sum(High_Rating)/.N]
+```
+
+3. Set the book identifier the key of the data table books_dt. What happened to the order of the data table? Hint: setkey()
+```{r}
+setkey(books_dt,"ISBN")
+#It changes the order of the rows
+```
+
+4. Which users did not give any rating to any book? Filter these users out from users_dt. Hint: There’s no need to merge users_dt with ratings_dt, we are simply interested in the users that are not in ratings_dt.
+```{r}
+
+users_who_rated <- ratings_dt[,User_ID]
+users_dt[!User_ID %in% users_who_rated] %>% head()
+#users_not_rate <- users_dt[!User_ID %in% users_who_rated]
+
+```
+
+5. What is the most common age of users who rated at least one book?
+```{r}
+users_dt[User_ID %in% users_who_rated & !is.na(Age), .N, by=Age][N == max(N)]
+```
+
+6. On average, how many books did a user rate?
+```{r}
+ratings_dt[,.N, by=User_ID][,mean(N, na.rm=T)]
+```
+
+
+
+7. What is the title of the first published book with the highest ranking?
+```{r}
+ratings_dt[order(Year_Of_Publication, -Book_Rating)] %>% head(1)
+```
+
+8. In which year was a book with the largest number of ratings last published?
+```{r}
+ratings_dt[,Rating_Count := .N, by=ISBN]
+ratings_dt[Rating_Count==max(Rating_Count), max(Year_Of_Publication)] 
+```
+
+9. Add to the table ratings_dt the highest ranking that each book received as a new column called Max_Book_Ranking.
+```{r}
+ratings_dt[,Max_Rating := max(Book_Rating), by=ISBN]
+```
+
+10. Subset the merged ratings table to contain only books written by the following authors:
+```{r}
+authors <- c("Agatha Christie", "William Shakespeare", "Stephen King", "Ann M. Martin", "Carolyn Keene", "Francine Pascal",
+"Isaac Asimov", "Nora Roberts", "Barbara Cartland", "Charles Dickens")
+
+ratings_dt[Book_Author %in% authors, .(mean(Book_Rating, na.rm=T), max(Book_Rating)), by=Book_Author]
+
+```
+

@@ -1,0 +1,192 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+library(data.table)
+library(magrittr)
+library(tidyr)
+```
+### Section 01
+
+ For questions 1,2 and 3, look at the pdf with the answers 
+
+ 4. The example_product_data.csv file describes the number of times a person bought product “a” and “b”. Load the file into a data.table. 
+
+```{r}
+product_dt <- fread("extdata/example_product_data.csv")
+product_dt
+```
+
+ 5. Transform product_dt into a long fromat using data.table commands.
+```{r}
+long_dt <- melt(product_dt, id.vars = "name", measure.vars =c("producta", "productb"), variable.name = "product", value.name = "num_prod" )
+long_dt
+```
+
+6. Transform the table from the long format back into a wide format. Check that it is equal to the original data.table.
+```{r}
+wide_dt<- dcast(long_dt, ... ~ product,value.var ="num_prod" )
+wide_dt
+```
+
+### Section 02
+
+1. Read in the weather dataset weather.txt as a data.table.
+```{r}
+weather_dt<- fread("extdata/weather.txt")
+head(weather_dt)
+```
+
+2. Why is this dataset messy?
+
+- Column headers are values, not variable names (d1,d2...) so we need to melt.
+- Multiple variables are stored in one column (element), so we need to dcast.
+- It would be better if year, month and day were in the same column called "date". We need to unite
+
+3. How would a tidy version of it look like? Do not give the code, only describe how the tidy table would look like.
+
+It would be something like this:
+      
+
+```{r}
+DT = data.table(
+  id = c("MX000017004","MX000017004"),
+  date = c("01.12.2010","02.02.2010"),
+  tmin = c(138,144),
+  tmax = c(299,273)
+) 
+
+DT
+```
+
+4. Create a tidy version of the weather dataset.
+<br>
+id.vars have all the variables that do not change. The rest are considered to be melted.
+```{r}
+melted_weather <- melt(weather_dt, id.vars = c("id","year","month","element"), variable.name = "day", value.name = "temperature")
+melted_weather <- melted_weather[!(is.na(temperature))]
+head(melted_weather)
+
+weather_dcast<- dcast(melted_weather, ... ~ element,  value.var = "temperature")
+head(weather_dcast)
+
+```
+
+```{r}
+
+weather_dcast[,day := as.integer(gsub('d','',day))] 
+head(weather_dcast)
+
+weather_dcast[,date := paste(day, month, year,sep = "-")]
+weather_dcast[,c("year","month","day"):= NULL]
+head(weather_dcast)
+
+```
+```{r}
+setnames(weather_dcast,"TMAX","tmax")
+setnames(weather_dcast,"TMIN","tmin")
+head(weather_dcast)
+```
+
+
+### Section 03 - Scattered data across many files
+
+1. Create a list containing all file paths in the folder.
+
+```{r}
+files <- list.files("extdata/baby-names/", full.names = T)
+head(fread(files[1]))
+
+```
+
+2. Name the list entries with the basename of the corresponding file path.
+```{r}
+names(files) <- basename(files)
+```
+
+3. Read in the data from all files into one table. Hint: when you read many files and gather them into one table, be sure to add a column that identifies each file. rbindlist()
+```{r}
+tables <- lapply(files, fread)
+babies_dt <- rbindlist(tables, idcol = 'filename')
+head(babies_dt)
+```
+
+4. Is the data tidy? If not, tidy it up.
+```{r}
+#We want two columns called sex and year
+babies_dt <- separate(babies_dt, col = "filename", into=c("year","sex"), extra="drop")
+head(babies_dt)
+```
+
+### Section 04 - Merge Warm Up
+
+Prepare two tables by running the following code:
+```{r}
+mtcars_dt <- as.data.table(mtcars)
+mtcars_dt[, carname := rownames(mtcars)]
+dt1 <- mtcars_dt[5:25,.(carname, mpg, cyl)]
+dt2 <- mtcars_dt[1:10, .(carname, gear)]
+head(dt1)
+head(dt2)
+```
+
+1. How long is the inner merge of dt1 and dt2?
+```{r}
+inner_dt <- merge(dt1, dt2, by='carname')
+inner_dt
+```
+2. How long is the left merge of dt1 and dt2?
+```{r}
+left_dt <- merge(dt1, dt2, by='carname',all.x = T)
+left_dt
+```
+
+3. How long is the outter merge of dt1 and dt2?
+```{r}
+outter_dt <- merge(dt1, dt2, by='carname',all = T)
+outter_dt
+```
+### Section 05 - Small case study
+
+Read the two files in the folder eqt1
+```{r}
+gt <- fread("extdata/eqtl/genotype.txt")
+dim(gt)
+```
+
+```{r}
+head(gt[,1:5])
+```
+```{r}
+growth <- fread('extdata/eqtl/growth.txt')
+head(growth)
+```
+
+ 2. Come up with a strategy, how you can transform the two tables shown above into the single table shown below.
+<br>
+A table with column names: strain, media, growth_rate, marker and gt.
+```{r}
+gt <- melt(gt, id.vars = "strain", variable.name = "marker", value.name = "gt")
+head(gt)
+```
+
+
+```{r}
+growth <- melt(growth, id.vars = "strain", variable.name = "media", value.name = "growth_rate")
+head(growth)
+```
+```{r}
+final_dt <- merge(growth, gt, by='strain',allow.cartesian = T)
+head(final_dt)
+summary(final_dt)
+```
+
+```{r}
+library(ggplot2)
+ggplot(final_dt[marker %in% c('mrk_5211', 'mrk_1653')], aes(marker, growth_rate, color=gt)) + geom_boxplot() + facet_wrap(~media)
+```
+
