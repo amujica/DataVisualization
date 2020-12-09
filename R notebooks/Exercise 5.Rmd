@@ -1,0 +1,280 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### Section 00 - Getting Ready
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(magrittr) # Needed for %>% operator
+library(tidyr)
+library(GGally)
+library(pheatmap)
+library(mclust)
+
+```
+
+### Section 01 - Visualizing multiple variables
+
+Gene expression measures the abundance of RNAs per gene. It is indicative of how active a gene is in a sample.
+Variations of gene expression across samples are indicative of the gene’s role. The gene expression data in cancer_data.rds is a matrix of gene expression values across 30 tumour samples aimed at understanding the potential role of genes in cancer.
+```{r}
+expr <- readRDS("extdata/cancer_data.rds") %>% as.data.table(keep.rownames="tumor_type")
+head(expr[,1:5])
+names(expr)
+
+```
+
+1. We are interested in the correlations between genes. Plot the pairwise correlations of the variables in the dataset. Which pair of genes has the highest correlation? Hint: remember that you can exclude a column "colA" from a data table DT with DT[, -"colA"].
+```{r}
+#Correlation matrix - GGALLY
+ggcorr(expr[, -"tumor_type"]) #For a lot of columns. ggpair() can be used for less columns
+
+```
+
+2. Visualize the raw data in a heatmap with pheatmap.
+```{r}
+
+expr_matrix <- as.matrix(expr[, -"tumor_type"])
+rownames(expr_matrix) <- expr[, tumor_type]
+pheatmap(expr_matrix, cluster_rows = F, cluster_cols = F)
+
+ggplot(expr,aes(FUK,UGP2)) + geom_point()
+```
+So it seems that we have some outliers, we need to fix it.
+
+3. Does the previous plot suggest some erroneous entries? Could they have affected the correlations? Check by an appropriate plot the impact of these erroneous entries on the correlations. Substitute the erroneous values with missing values (NA) and redo the previous questions 2 and 3.
+```{r}
+
+expr[tumor_type == "DOHH2", FUK := NA] 
+expr[tumor_type == "DOHH2", UGP2 := NA]
+expr_matrix <- as.matrix(expr[, -"tumor_type"])
+rownames(expr_matrix) <- expr[, tumor_type]
+pheatmap(expr_matrix, cluster_rows = F, cluster_cols = F)
+ggplot(expr,aes(FUK,UGP2)) + geom_point()
+ggcorr(expr)
+#pheatmap(expr_matrix, cluster_rows = F, cluster_cols = F, scale='column')
+
+```
+
+
+### Section 02 - Heatmaps and Hierarchical clustering
+
+1. Consider the full iris data set without the Species column for clustering. Create a pretty heatmap with the library pheatmap of the data without clustering.
+```{r}
+# We will use it as a data.frame
+plot.data <-iris[, -5]
+
+pheatmap(plot.data,cluster_rows = F, cluster_cols = F, scale = "column", show_rownames = F)
+
+```
+
+2. Now, create a pretty heatmap using complete linkage clustering of the rows of the data set.
+```{r}
+pheatmap(plot.data, scale = "column", clustering_method = "complete", show_rownames = F, cluster_cols = F)
+
+
+```
+
+3. Annotate the rows of the heatmap with the Species column of the iris dataset. What do you observe when you compare the dendrogram and the species labels?
+
+```{r}
+#Create a data.frame for the row annotations
+row.ann <- data.table(Species = iris$Species)
+
+#Label the row names to be able to annotate rows (that is why we work with data.frames)
+rownames(plot.data) <- 1:nrow(plot.data)
+
+#Pheatmap
+pheatmap(plot.data, scale = "column", clustering_method = "complete", show_rownames = F, cluster_cols = F, annotation_row = row.ann)
+
+```
+This explains why we use dataframes, since we need the row names 
+(numbers) and data.table do not have that.
+The hierarchical clustering clearly groups setosa observations together but fails to separate versicolor and virginica.
+<br>
+
+4. Obtain the dendogram of the row clustering using complete linkage clustering and partition the data into 3 clusters.
+
+```{r}
+h_complete <- pheatmap(plot.data, scale = "column", clustering_method = "complete", show_rownames = F, cluster_cols = F, annotation_row = row.ann, silent = T) #We use silent so the heatmap does not get plotted every time
+
+complete <- cutree(h_complete$tree_row, k=3)
+complete #Vector with group memberships
+table(complete, iris$Species)
+
+```
+5. Create a pretty heatmap using average clustering of the rows annotated with the species and the complete linkage clustering results. What do you observe when you compare the dendrogram, the complete linkage results and the species labels?
+
+```{r}
+row.ann[,complete:= factor(complete)]
+h_average <- pheatmap(plot.data, scale = "column", clustering_method = "average", show_rownames = F, cluster_cols = F, annotation_row = row.ann)
+#We plot clusters of both complete and average methods. We put complate as row annotation to compare it to average (used for the heatmap)
+```
+6. Partition the data into 3 clusters using the average clustering method.
+```{r}
+average <- cutree(h_average$tree_row, k=3)
+average
+table(average)
+
+
+row.ann[,average:= factor(average)]
+
+pheatmap(plot.data, scale = "column", clustering_method = "average", show_rownames = F, cluster_cols = F, annotation_row = row.ann) 
+
+
+
+```
+
+
+7. Use the table function to compare the partitions from the complete and the average linkage clustering.
+```{r}
+table(average,complete)
+
+
+```
+So average clustering returns 2 clusters because the third cluster is very small with only 3 observations. Average and complete both identify setosa. Average puts virgininca and versicolor in one cluster. Complete mixes virginia and versicolor into two clusters.
+
+### Section 03 - k-Means clustering
+
+1. Perform k-means clustering on the iris data set with k = 3.
+```{r}
+#scale the data previously because it cannot be done inside
+scaled.data <- scale(plot.data)
+km <- kmeans(scaled.data, centers = 3, nstart=20) #nstart 
+table(km$cluster, iris$Species)
+
+```
+As we can see, the results are not ideal since the Species get confused.
+
+2. Create a pretty heatmap using average clustering of the rows annotated with the species, the hierarchical clustering results and the k-means results. What do you observe when you compare the dendrogram, the k-means results and the species labels?
+
+```{r}
+row.ann[,kmeans:=factor(km$cluster)]
+pheatmap(plot.data, scale = "column", clustering_method = "average", show_rownames = F, cluster_cols = F, annotation_row = row.ann) 
+```
+So setosa is classified very good because as we can see Lenght and Width of the petal is very distinctive (blue). As we can se kmeans makes a better job than the others, but still not ideal.
+
+
+### Section 04 - Cluster comparison
+
+
+1. Compute the Rand indices between the clustering results from the previous sections (complete, average and k-means) and species label. Hint: rand.index() from the library fossil.
+
+```{r}
+library(fossil)
+rand.index(complete,average)
+rand.index(complete,complete)
+
+#or
+rand.index(row.ann[,as.numeric(complete)], row.ann[,as.numeric(average)])
+rand.index(row.ann[,as.numeric(average)], row.ann[,as.numeric(average)])
+
+row.ann[,Species:=as.numeric(Species)]
+rand <- apply(row.ann, 2, function(i) 
+  apply(row.ann,2,function(j) rand.index(as.numeric(i), as.numeric(j))))
+rand
+
+
+```
+
+2. [OPTIONAL] Visualize the pair wise Rand indices with a pretty heatmap. What is the best clustering in this scenario according to the computed Rand indices?
+```{r}
+pheatmap(rand, cluster_rows = F, cluster_cols = F)
+
+
+rand_dt <- data.table(rand, keep.rownames = 'Clustering1') %>% melt(id.vars='Clustering1', value.name='rand_index', variable.name='Clustering2')
+
+rand_dt[rand_index<1 & Clustering1=='Species'][which.max(rand_index)]
+
+```
+
+
+### Section 05 - Dimensionality reduction with PCA
+
+1. Let X be the iris data set without the Species column and only for the species setosa. Perform PCA on X. Make sure that you scale and center the data before performing PCA.
+```{r}
+iris_dt <- as.data.table(iris)
+X <- iris_dt[Species=="setosa", -"Species"]
+head(X)
+
+#We perform pca on X
+pca <-prcomp(X, center = T, scale=T)
+pca
+
+```
+The goal of pca is to reduce dimensions (number of variables). In this case we will go from 4 variables to 2 variables. But althought we reduce dimension we want to keep as much information as impossible, which means keeping the structure of the data. 
+
+
+2. Which proportion of the variance is explained by each principle component?
+```{r}
+summary(pca)
+```
+So, as shown in the table, p1 and pc2 together explain 77% of the variance.
+<br>
+
+3. Compute the projection of X from the PCA result and plot the projection on the first two principle components. Hint: predict() Additionally look at the biplot and come up with an interpretation of the first principal component.
+```{r}
+# 1. Compute matrix of PCs
+# 2. Multiply original data with PCs.
+# In R is done with predict
+proj <- as.data.table(predict(pca))
+
+#Projected 2d space
+ggplot(proj, aes(PC1,PC2)) + geom_point()
+
+
+```
+If we keep PC1 and PC2 then we get to a 2-dimensional space.
+```{r}
+biplot(pca)
+```
+
+The red axis are the projections of the original variables in the 2d space. They are all contributing negatively to PC1.
+So PC1 is probably strongly related to the size of the flower since it goes down when size goes up.
+
+
+
+4. Plot the first principal component against the other variables in the dataset and discuss whether this supports your previously stated interpretation. Discuss the interpretation in your Breakout Room.
+```{r}
+pc_iris <- cbind(iris_dt[Species == "setosa"], proj)
+pc_iris <- melt(pc_iris, id.vars = c("Species", 'PC1', 'PC2', 'PC3', 'PC4'))
+ggplot(pc_iris, aes(value, PC1)) + geom_point() + facet_wrap(~variable, scales = 'free')
+
+```
+
+Projection of PC1 is strongly correlated with all original variables, and this means a large PC1 value <--> small flower (small values for original variables in general).
+
+Conlusion: we can interpret the PC1 as SIZE an reduce the dimensionality.
+
+5. Repeat the steps 1 - 4 for all species jointly (not only setosa). Discuss whether your original interpretation of the first principal component changed when performing the PCA for all species jointly. Use color to differentiate between the species in your plots.
+```{r}
+#pca in all species
+pca_data <-  iris_dt[, -"Species"]
+pca<- prcomp(pca_data, center = T, scale. = T)
+pca
+
+#projection
+proj <- as.data.table((predict(pca)))
+pc_iris <- cbind(iris_dt,proj)
+ggplot(pc_iris, aes(PC1,PC2,color=Species)) + geom_point()
+```
+
+We can know, based on PCs that Low PC1 means setosa. And a middle value of PC1 means versicolor in general. A high value means virginica. 
+
+
+```{r}
+biplot(pca)
+
+```
+In the biplot one can observe that the lengths and widths do not contribute with the same sign any longer.
+Flower size specially Sepal.Width <--> Species <--> PC1 projection
+```{r}
+pc_iris <- melt(pc_iris, id.vars = c("Species", 'PC1', 'PC2', 'PC3', 'PC4'))
+
+ggplot(pc_iris, aes(value, PC1,color=Species)) + geom_point()+facet_wrap(~variable, scales="free")
+```
+Therefore, the PC1 can be interpreted as describing the species of each flower
+
