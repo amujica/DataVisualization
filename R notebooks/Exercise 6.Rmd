@@ -1,0 +1,118 @@
+---
+title: "Graphically supported hypotheses"
+output: html_notebook
+---
+
+### Section 00 - Getting Ready
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(magrittr) # Needed for %>% operator
+library(tidyr)
+
+```
+
+### Section 01 - Color guidelines
+
+What are best practices when using color for data visualizations? <br>
+<b>1. Avoid having too many colors for categorical data.</b> <br>
+2. Use one bright color to attract the readers attention.<br>
+<b>3. Use color only when it actually adds meaning to the plot.</b><br>
+4. Use divergent color scales for categorical data types.<br>
+
+### Section 02 - Confounding factors
+Investigate the file coffee_sim.csv by first loading it as a data.table.
+
+```{r}
+coffee_dt <- fread("./extdata/coffee_sim.csv")
+coffee_dt
+head(coffee_dt)
+summary(coffee_dt)
+```
+
+1. Visualize the trend between coffee and coronary heart disease (CHD)-related deaths (risk), which suggests a possible causal relationship.
+```{r}
+ggplot(coffee_dt, aes(cups_per_day, risk)) + geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3)
+
+ggplot(coffee_dt, aes(packs_per_day, risk)) + geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3)
+```
+As we can see there might be a correlation between cups_per_day or packs_per_day and risk of having CHD.
+
+2. From this plot you could conclude that coffee causes CHD. Do you think this conclusion explains the original observation? Provide plots supporting other conclusions.
+
+```{r}
+
+ggplot(coffee_dt, aes(packs_per_day, risk, color=cups_per_day)) + geom_boxplot() 
+
+ 
+```
+When you smoke two packs, we see that it does not matter if you drink coffe or not. So, what is causing CHD is smoking rather than drinking coffee. Drinking Coffee and smoking are related in some way, so this is a case of common or indirect cause.
+
+### Section 03 - Supporting hypotheses with visualizations
+
+1. Read the titanic.csv file into a data.table. You can read the description of the dataset on kaggle:
+https://www.kaggle.com/c/titanic/data.
+```{r}
+titanic_dt <- fread("./extdata/titanic.csv")
+head(titanic_dt)
+
+
+```
+
+2. Describe what you see in the data. Have a look at the first and last observations. Make a summary of the variables in the dataset.
+```{r}
+summary(titanic_dt)
+```
+
+3. What do you think are the factors that have the strongest influence on the survival rate? Make claims and justify your argument with plots. Hint: check variables like pclass, sex and age, and visualize whether they associate with survival. Additionally check their interactions.
+```{r}
+
+titanic_dt[,sex:= as.factor(sex)]
+titanic_dt[,pclass:= as.factor(pclass)]
+titanic_dt[,survived:= as.factor(survived)]
+
+```
+Age vs survived - age is numerical and survived is categorical, so we use boxplot
+```{r}
+ggplot(titanic_dt, aes(survived, age)) + geom_boxplot() + geom_jitter(alpha=0.3) + ggtitle('Age seems to have no influence')+ theme(plot.title = element_text(size=10))
+```
+
+
+Sex vs survived
+```{r}
+ggplot(titanic_dt, aes(sex, fill=survived)) + geom_bar(position = "dodge")+ ggtitle('Women survived more')+ theme(plot.title = element_text(size=10))
+#ggplot(titanic_dt, aes(sex, fill=survived)) + geom_bar(position = "fill") #The bad thing about this one is that we could have one of the categories with not a lot values and we would not see it
+```
+
+
+Pclass vs survived
+
+```{r}
+ggplot(titanic_dt, aes(pclass, fill=survived)) + geom_bar(position = "dodge")+ ggtitle('The better the class, the higher chance to survive')+ theme(plot.title = element_text(size=10))
+#ggplot(titanic_dt, aes(pclass, fill=survived)) + geom_bar(position = "fill") #The bad thing about this one is that we could have one of the categories with not a lot values and we would not see it
+```
+
+
+
+Now we are going to plot the variables sex, pclass and age against each other and survived.
+
+
+
+```{r}
+ggplot(titanic_dt, aes(survived, age)) + geom_boxplot() + geom_jitter(alpha=0.3) +facet_wrap(~pclass) + ggtitle('In every class,younger passengers had a better chance to survive')+ theme(plot.title = element_text(size=10))
+```
+Age has an effect, but in order to see it we need to separate in classes (similar to Simpson's paradox)
+
+```{r}
+ggplot(titanic_dt, aes(survived, age)) + geom_boxplot() + geom_jitter(alpha=0.3) +facet_wrap(~sex)+ ggtitle('Older female has a higher chance to survive')+ theme(plot.title = element_text(size=10))
+```
+
+Now we merge both into one plot:
+
+```{r}
+ggplot(titanic_dt, aes(survived, age)) + geom_boxplot() + geom_jitter(alpha=0.3) +facet_wrap(~sex+pclass)+ ggtitle('Females in first class survived a lot')+ theme(plot.title = element_text(size=10))
+```
+
+
+

@@ -1,0 +1,236 @@
+---
+title: "Statistical Testing I"
+output: html_notebook
+---
+
+### Section 00 - Getting Ready
+
+```{r}
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+
+```
+```{r}
+genotype <- fread("./extdata/eqtl/genotype.txt")
+genotype <- melt(genotype, id.vars = 'strain', variable.name = 'marker',
+value.name = 'genotype')
+growth <- fread("./extdata/eqtl/growth.txt")
+growth <- melt(growth, id.vars = "strain", variable.name = 'media',
+value.name = 'growth_rate')
+marker <- fread("./extdata/eqtl/marker.txt")
+
+head(genotype)
+head(growth)
+head(marker)
+```
+
+We are going to apply statistical testing without R functions to understand it before knowing R functions.
+
+### Section 01 - Permutation test of growth rate difference
+What are best practices when using color for data visualizations? 
+
+1. The following code recreates the example shown in the lecture to test the association of the genotype at marker 5211 with the growth rate difference in Maltose medium. Note that the code is written using functions, meaning that it will work for any marker, not just marker 5211. Read it carefully to understand what happens in each function. Then execute the code.
+
+```{r}
+#Plotting the growth rate difference
+getMaltoseDt = function(mrk){
+growth_mrk <- merge(growth, genotype[marker %in% mrk, .(strain, genotype, marker)], by = 'strain', allow.cartesian = TRUE)
+growth_mrk[media == "YPMalt"]
+}
+
+
+# boxplot
+plot_growth_one_mk <- function(mk){
+ggplot(getMaltoseDt(mk), aes(genotype, growth_rate)) +
+geom_boxplot() + labs(title = mk) + theme_bw(base_size = 16)
+}
+plot_growth_one_mk("mrk_5211")
+```
+
+```{r}
+# Function to calculate the difference of the median of two genotypes
+median_diff <- function(dt){
+dt[genotype == 'Wild isolate', median(growth_rate, na.rm=T)] -
+dt[genotype == 'Lab strain', median(growth_rate, na.rm=T)]
+}
+# Function to permute the table, plot the resulting histogram
+# and compute a p-value
+p_val_medians <- function(dt, N_permu = 1000){
+# It will return both a pvalue and plot a histogram of T_star
+T_ref <- median_diff(dt)
+T_star <- sapply(1:N_permu, function(x){
+median_diff(dt[, genotype := sample(genotype)]) })
+# Plot
+g <- ggplot(data = data.table(T_star = T_star), aes(T_star)) + geom_histogram() + geom_vline(aes(xintercept=T_ref, color="T_ref")) + xlim(-3,3)
+print(g) # Needed to render plot inside function call
+# Compute and return the p value
+p_val <- (sum(T_star > T_ref | T_star < -T_ref) + 1) / (N_permu + 1)
+p_val
+}
+# Calling the function:
+p_val_medians(getMaltoseDt("mrk_5211"))
+```
+
+Histogram: Statistics computed for each random computation. An the value is far from it, we never observed a difference equal or larger than T_ref in 1000 permutations, so it is unlikely that such a large difference could hace arisen by chance.
+
+2. Using the code above, plot and test whether markers 1653 and 5091 associate with growth. Interpret your results.
+```{r}
+plot_growth_one_mk("mrk_1653")
+plot_growth_one_mk("mrk_5091")
+
+cat("p-value for marker 1653 is ", p_val_medians(getMaltoseDt("mrk_1653")))
+cat(" and p-value for marker 5091 is ", p_val_medians(getMaltoseDt("mrk_5091")))
+
+```
+In both cases (mrk_5091 and mrk_5211) we reject null hypothesis since p-value is smaller than 0.05.
+But in  mrk_1653 we cannot reject, because the p value is higher.
+Both markers 5211 and 5091 are significantly associated with growth.
+
+
+
+
+
+### Section 02 - Permutation test of marker association
+
+1. We just concluded that both markers 5211 and 5091 are significantly associated with growth. However, this could be confounded. A common source of confounding in genomics is due to “linkage”, which describes the phenomenon of markers being inherited together.
+
+To investigate the issue of linkage in our dataset, test if marker 5091 significantly associates with marker 5211. Define a null hypothesis, a statistics and use permutation testing to answer the question. Strengthen your answer with a relevant plot.
+```{r}
+mks_geno <- genotype[marker %in% c('mrk_5091', 'mrk_5211')] %>%     spread(marker, genotype)
+head(mks_geno)
+T_ref <- mks_geno[mrk_5091==mrk_5211, .N] / nrow(mks_geno)
+T_ref
+
+N_permu <-1000
+T_star <- sapply(1:N_permu, function(x){
+mks_geno[mrk_5091==sample(mrk_5211), .N] / nrow(mks_geno) })
+
+ggplot(data.table(T_star=T_star), aes(T_star)) + geom_histogram() + geom_vline(aes(xintercept=T_ref,color="T_ref")) + xlim(0,1)
+
+p_val <- (sum(T_star > T_ref) + 1) / (N_permu + 1) #This time is one-sided
+p_val
+```
+H0: Marker 5091 is not significantly associated with marker 5211 <br>
+T statistic: number of times both markers had the same genotype/number of strains(rows)
+
+Reject Hnull since pvalue is very small and we conclude that those markers are associated
+
+### Section 03 - Accounting for Cofounding
+
+1. We see that indeed marker 5211 and 5091 associate. Thus, the assocation between these markers and growth could be confounded.
+We now would like to know if marker 5091 still associates with growth in maltose (YPMalt) when conditioned on marker 5211. Define a null hypothesis, a statistics and use permutation testing to answer the question.
+Strengthen your answer with a relevant plot.
+So, we want to know if one of the markers is only related to the other and indirectly associated to growth_rate.
+```{r}
+
+conditioning_dt <- merge(mks_geno, growth[media == "YPMalt"],
+                         by = "strain")
+head(conditioning_dt)
+a <- ggplot(conditioning_dt, aes(mrk_5211, growth_rate)) +
+  geom_boxplot() + facet_wrap(~ mrk_5091) + labs(title="Conditioned on mkr 5091")
+b <- ggplot(conditioning_dt, aes(mrk_5091, growth_rate)) +
+  geom_boxplot() + facet_wrap(~ mrk_5211 ) + labs(title="Conditioned on mkr 5211")
+
+a / b ## align plots with lubreary patchwork
+# Boxplots give a hint about the confounding
+# We see that the effect of mrk 5211 persists
+# even when we condition on the other marker
+# This is not true for mrk 5091
+
+
+```
+We see that mrk 5091 is only related to growth rate through marker 5211. If marker 5211 is lab strain, or wild isolate, that is to say, if 5211 is defined it does not matter what value 5091 has.
+But we need to test it:
+
+
+```{r}
+p_val_condition_on <- function(test_mrk = "mrk_5078", condition_mrk = "mrk_5211", N_permu = 1000) {
+# Prepare data table
+conditioned_dt <- getMaltoseDt(c(test_mrk, condition_mrk)) %>%
+spread(marker, genotype)
+setnames(conditioned_dt, test_mrk, "test_mrk")
+setnames(conditioned_dt, condition_mrk, "condition_mrk")
+
+# Get T_ref
+median_ref <- conditioned_dt[, median(growth_rate, na.rm=T), by = c("test_mrk", "condition_mrk")] %>% spread(test_mrk, V1)
+head(median_ref)
+T_ref <- mean(median_ref[,`Wild isolate` - `Lab strain`])
+# Do permutations conditioned on the other marker
+T_star <- numeric(N_permu)
+for(i in 1:N_permu){
+  conditioned_dt[, test_mrk := sample(test_mrk), by = condition_mrk]
+  medians <- conditioned_dt[, median(growth_rate, na.rm=T), by = c("test_mrk", "condition_mrk")] %>%spread(test_mrk, V1)
+  T_star[i] <- mean(medians[, `Wild isolate` - `Lab strain`])
+}#
+
+g <- ggplot(data = data.table(T_star = T_star), aes(T_star)) + geom_histogram() +geom_vline(aes(xintercept=T_ref, color="T_ref"))
+print(g)
+# P-value
+p_val <- (sum(T_star > T_ref) + 1) / (N_permu + 1)
+p_val
+}
+p_val_condition_on(test_mrk = "mrk_5091", condition_mrk = "mrk_5211")
+```
+
+On the growth vs genotype case, conditioned on another marker:
+Ho: For each marker, the growth medians are the same for Lab and Wild, no matter the conditioned marker<br>
+Tref: mean across subgroups of {median(growth on Wild) - median(growth on Lab)},for each  <br>
+
+In this case we do nor reject H0
+
+2. Now, test if marker 5211 associates with growth in maltose when conditioned on marker 5091. Are the results the same? Discuss.
+```{r}
+p_val_condition_on(test_mrk = "mrk_5211", condition_mrk = "mrk_5091")
+```
+We reject H0 in this case.
+
+
+### Section 04 - Confidence Intervals
+1. Estimate 95% equi-tailed confidence intervals for the median of growth in maltose for each genotype at marker mrk_5211. Use the case resampling bootstrap scheme and report bootstrap percentile intervals. Propose a visualization of the results. Try it also with markers 5091 and 1653.
+```{r}
+mystat <- function(x){
+median(x, na.rm=TRUE)
+}
+
+boot <- function(x, func, B = 999){
+  T_star <- sapply(1:B, function(i){
+  xstar <- sample(x, replace=TRUE)
+  func(xstar)
+  }
+  )
+return(T_star)
+}
+
+confint <- function(Tstar, alpha = 0.05){
+  quantile(Tstar, c(alpha/2, 1-alpha/2))
+}
+
+conf_int_plot <- function(marker){
+  plot_list <- list("Lab strain" = NA, "Wild isolate" = NA)
+  for(geno in c("Lab strain", "Wild isolate")){
+    # geno = ’Lab strain’
+    x <- getMaltoseDt(marker)[genotype == geno, growth_rate]
+    T_star <- boot(x , mystat) # Bootstrap 1000 times and compute the median (mystat)
+    T_ref <- median(x, na.rm=TRUE)
+    CI_lab <- confint(T_star)
+    # Plot histogram, add median and confidence interval as vertical lines
+    g <- ggplot(data = data.table(T_star = T_star), aes(T_star)) +     geom_histogram() +
+    geom_vline(data=data.table(T_ref), aes(xintercept=T_ref, x =      color="T_ref")) + xlim(4,10) +
+    geom_vline(data=data.table(CI_lab), aes(xintercept=CI_lab[1],     color="CI"), linetype="dashed") +
+    geom_vline(data=data.table(CI_lab), aes(xintercept=CI_lab[2],     color="CI"), linetype="dashed")
+    plot_list[geno] <- list(g) # list is necessary to let patchwork interpret it right
+  }#
+
+# it nicely aligns plots above each other
+# this is completely optional
+plot_list[["Lab strain"]] / plot_list[["Wild isolate"]]
+}
+
+conf_int_plot("mrk_5211")
+```
+We see there is a relationship between CI overlapping and p values of section 1. CI ar away related to small pvalues but ingeneral overlapping of CI does not neccessarily mean that we can reject the H0 meaning pvalue is <0.05
+
